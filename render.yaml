@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: data-pipeline-backend
+    runtime: python
+    buildCommand: "cd backend && pip install -r requirements.txt"
+    startCommand: "cd backend && gunicorn app:app"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.18
