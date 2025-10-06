@@ -7,7 +7,14 @@ from werkzeug.utils import secure_filename
 import io
 
 app = Flask(__name__)
-CORS(app)
+# Allow CORS for all origins (you can restrict this later to your frontend domain)
+CORS(app, resources={
+    r"/api/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type"]
+    }
+})
 
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls'}

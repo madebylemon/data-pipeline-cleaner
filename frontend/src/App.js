@@ -68,7 +68,9 @@ function App() {
     }
 
     try {
-      const response = await axios.post('http://localhost:5001/api/upload', formData, {
+      // Use environment variable for API URL, fallback to localhost for development
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+      const response = await axios.post(`${apiUrl}/api/upload`, formData, {
         responseType: 'blob',
         headers: {
           'Content-Type': 'multipart/form-data',
