@@ -131,14 +131,26 @@ def process_single_file(file_path, original_filename):
         else:
             df = pd.read_excel(file_path)
         
-        # Transformation 1: Remove metadata columns B through R (StartDate through UserLanguage)
-        if 'StartDate' in df.columns and 'UserLanguage' in df.columns:
-            start_idx = df.columns.get_loc('StartDate')
-            end_idx = df.columns.get_loc('UserLanguage')
-            # Get all columns between and including StartDate and UserLanguage
-            if end_idx >= start_idx:
-                cols_to_remove = df.columns[start_idx:end_idx + 1].tolist()
-                df = df.drop(columns=cols_to_remove, errors='ignore')
+        # Transformation 0: Delete rows 2 and 3 (indices 0 and 1) across ALL columns
+        # This removes the first two data rows after the header
+        if len(df) > 2:
+            df = df.drop([0, 1]).reset_index(drop=True)
+        elif len(df) > 0:
+            # If there are only 1-2 rows, drop what exists
+            df = df.drop(df.index[0:min(2, len(df))]).reset_index(drop=True)
+        
+        # Transformation 1: Remove specific metadata columns (not by position, by name)
+        # These are the typical Qualtrics metadata columns to remove
+        metadata_cols_to_remove = [
+            'StartDate', 'EndDate', 'Status', 'IPAddress', 'Progress', 
+            'Duration (in seconds)', 'Finished', 'RecordedDate', 'ResponseId',
+            'RecipientLastName', 'RecipientFirstName', 'RecipientEmail',
+            'ExternalReference', 'LocationLatitude', 'LocationLongitude',
+            'DistributionChannel', 'UserLanguage'
+        ]
+        cols_to_drop = [col for col in metadata_cols_to_remove if col in df.columns]
+        if cols_to_drop:
+            df = df.drop(columns=cols_to_drop, errors='ignore')
         
         # Transformation 1b: Remove column "AE"
         if 'AE' in df.columns:
