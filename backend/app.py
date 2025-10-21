@@ -160,17 +160,29 @@ def process_single_file(file_path, original_filename):
             cols.insert(0, 'ID')
             df = df[cols]
         
-        # Transformation 5: Remove all survey-related columns (Q26-Q44)
+        # Transformation 4: Remove all survey-related columns (Q26-Q44)
+        # More aggressive removal - remove ANY column that contains Q26 through Q44
         cols_to_remove = []
         for col in df.columns:
-            # Remove any column that is Q26 through Q44 (with or without suffixes)
+            col_upper = str(col).upper()
+            # Check if column contains Q26 through Q44 in any format
             for i in range(26, 45):
-                if col == f'Q{i}' or col.startswith(f'Q{i} ') or col.startswith(f'Q{i}-'):
-                    cols_to_remove.append(col)
-                    break
+                # Match Q{i} at word boundary (start of string or after non-alphanumeric)
+                if f'Q{i}' in col_upper:
+                    # Extra check: ensure it's actually Q{i} and not part of a larger number
+                    # (e.g., Q260 should not match Q26)
+                    import re
+                    if re.search(rf'\bQ{i}\b', col_upper):
+                        cols_to_remove.append(col)
+                        break
         
         if cols_to_remove:
             df = df.drop(columns=cols_to_remove, errors='ignore')
+        
+        # Transformation 5: Also remove any columns with "Survey" in the name (extra safety)
+        survey_cols = [col for col in df.columns if 'survey' in str(col).lower()]
+        if survey_cols:
+            df = df.drop(columns=survey_cols, errors='ignore')
         
         # Transformation 7: Add metadata columns from filename
         # Add Course Name column
