@@ -74,8 +74,8 @@ def get_pre_post(date_str, semester):
         print(f"Error determining Pre/Post for {date_str}: {e}")
         return None
 
-def process_file(file_path, original_filename, course_name=None):
-    """Process the uploaded file with all transformations."""
+def process_single_file(file_path):
+    """Process a single file with all transformations and return the dataframe."""
     try:
         # Read file
         if file_path.endswith('.csv'):
@@ -136,60 +136,105 @@ def process_file(file_path, original_filename, course_name=None):
         if 'StartDate' in df.columns and 'Semester' in df.columns:
             df['Pre/Post'] = df.apply(lambda row: get_pre_post(row['StartDate'], row['Semester']), axis=1)
         
+        return df
+    
+    except Exception as e:
+        raise Exception(f"Error processing file: {str(e)}")
+
+def process_files(file_paths, course_name=None):
+    """Process multiple files, combine them, and return the output path."""
+    try:
+        processed_dfs = []
+        
+        # Process each file
+        for file_path in file_paths:
+            df = process_single_file(file_path)
+            processed_dfs.append(df)
+        
+        # Combine all dataframes
+        if len(processed_dfs) == 1:
+            combined_df = processed_dfs[0]
+        else:
+            # Concatenate all dataframes, keeping all columns
+            combined_df = pd.concat(processed_dfs, ignore_index=True, sort=False)
+        
         # Transformation 9: Add "Course Name" column if course name provided
         if course_name:
-            df['Course Name'] = course_name
+            combined_df['Course Name'] = course_name
         
         # Save to CSV
         if course_name:
             output_filename = f"{course_name}.csv"
         else:
-            output_filename = "cleaned_data.csv"
+            output_filename = "cleaned_master_data.csv"
         
         output_path = os.path.join(UPLOAD_FOLDER, output_filename)
-        df.to_csv(output_path, index=False, encoding='utf-8')
+        combined_df.to_csv(output_path, index=False, encoding='utf-8')
         
         return output_path, output_filename
     
     except Exception as e:
-        raise Exception(f"Error processing file: {str(e)}")
+        raise Exception(f"Error processing files: {str(e)}")
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
     try:
-        # Check if file is present
-        if 'file' not in request.files:
-            return jsonify({'error': 'No file provided'}), 400
+        # Check if files are present (support both single 'file' and multiple 'files')
+        files_to_process = []
         
-        file = request.files['file']
+        # Check for multiple files
+        if 'files' in request.files:
+            files_list = request.files.getlist('files')
+            if not files_list or all(f.filename == '' for f in files_list):
+                return jsonify({'error': 'No files selected'}), 400
+            files_to_process = files_list
+        # Check for single file (backward compatibility)
+        elif 'file' in request.files:
+            file = request.files['file']
+            if file.filename == '':
+                return jsonify({'error': 'No file selected'}), 400
+            files_to_process = [file]
+        else:
+            return jsonify({'error': 'No files provided'}), 400
         
-        if file.filename == '':
-            return jsonify({'error': 'No file selected'}), 400
-        
-        if not allowed_file(file.filename):
-            return jsonify({'error': 'Invalid file format. Please upload CSV or Excel files only.'}), 400
+        # Validate all files
+        for file in files_to_process:
+            if not allowed_file(file.filename):
+                return jsonify({'error': f'Invalid file format: {file.filename}. Please upload CSV or Excel files only.'}), 400
         
         # Get course name from form data
         course_name = request.form.get('course_name', '').strip()
         
-        # Save uploaded file
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-        file.save(filepath)
-        
-        # Process file
-        output_path, output_filename = process_file(filepath, filename, course_name if course_name else None)
-        
-        # Clean up uploaded file
-        os.remove(filepath)
-        
-        # Send cleaned file
-        return send_file(
-            output_path,
-            as_attachment=True,
-            download_name=output_filename,
-            mimetype='text/csv'
-        )
+        # Save all uploaded files
+        saved_filepaths = []
+        try:
+            for file in files_to_process:
+                filename = secure_filename(file.filename)
+                filepath = os.path.join(UPLOAD_FOLDER, filename)
+                file.save(filepath)
+                saved_filepaths.append(filepath)
+            
+            # Process all files and combine them
+            output_path, output_filename = process_files(saved_filepaths, course_name if course_name else None)
+            
+            # Clean up uploaded files
+            for filepath in saved_filepaths:
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+            
+            # Send cleaned file
+            return send_file(
+                output_path,
+                as_attachment=True,
+                download_name=output_filename,
+                mimetype='text/csv'
+            )
+        except Exception as e:
+            # Clean up uploaded files in case of error
+            for filepath in saved_filepaths:
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+            raise e
     
     except ValueError as ve:
         return jsonify({'error': str(ve)}), 400

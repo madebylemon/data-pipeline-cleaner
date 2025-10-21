@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 
 function App() {
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedFiles, setSelectedFiles] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState(''); // 'success' or 'error'
@@ -24,45 +24,67 @@ function App() {
     e.stopPropagation();
     setDragActive(false);
     
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFileSelect(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFilesSelect(Array.from(e.dataTransfer.files));
     }
   };
 
-  const handleFileSelect = (file) => {
+  const handleFilesSelect = (filesArray) => {
     const validExtensions = ['csv', 'xlsx', 'xls'];
-    const fileExtension = file.name.split('.').pop().toLowerCase();
+    const invalidFiles = [];
+    const validFiles = [];
     
-    if (validExtensions.includes(fileExtension)) {
-      setSelectedFile(file);
+    filesArray.forEach(file => {
+      const fileExtension = file.name.split('.').pop().toLowerCase();
+      if (validExtensions.includes(fileExtension)) {
+        validFiles.push(file);
+      } else {
+        invalidFiles.push(file.name);
+      }
+    });
+    
+    if (invalidFiles.length > 0) {
+      setMessage(`Invalid file format: ${invalidFiles.join(', ')}. Please upload CSV or Excel files only.`);
+      setMessageType('error');
+    } else {
       setMessage('');
       setMessageType('');
-    } else {
-      setMessage('Invalid file format. Please upload CSV or Excel files only.');
-      setMessageType('error');
-      setSelectedFile(null);
+    }
+    
+    if (validFiles.length > 0) {
+      setSelectedFiles(validFiles);
     }
   };
 
   const handleFileChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      handleFileSelect(e.target.files[0]);
+    if (e.target.files && e.target.files.length > 0) {
+      handleFilesSelect(Array.from(e.target.files));
     }
   };
 
+  const removeFile = (index) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleProcess = async () => {
-    if (!selectedFile) {
-      setMessage('Please select a file first');
+    if (selectedFiles.length === 0) {
+      setMessage('Please select at least one file');
       setMessageType('error');
       return;
     }
 
     setIsProcessing(true);
-    setMessage('Processing your file...');
+    const fileCount = selectedFiles.length;
+    setMessage(`Processing ${fileCount} file${fileCount > 1 ? 's' : ''}...`);
     setMessageType('');
 
     const formData = new FormData();
-    formData.append('file', selectedFile);
+    
+    // Append all files
+    selectedFiles.forEach(file => {
+      formData.append('files', file);
+    });
+    
     if (courseName.trim()) {
       formData.append('course_name', courseName.trim());
     }
@@ -84,7 +106,7 @@ function App() {
       
       // Get filename from content-disposition header or use default
       const contentDisposition = response.headers['content-disposition'];
-      let filename = `cleaned_${selectedFile.name.split('.')[0]}.csv`;
+      let filename = 'cleaned_master_data.csv';
       if (contentDisposition) {
         const filenameMatch = contentDisposition.match(/filename="?(.+)"?/);
         if (filenameMatch) {
@@ -98,11 +120,11 @@ function App() {
       link.parentNode.removeChild(link);
       window.URL.revokeObjectURL(url);
 
-      setMessage('File processed successfully! Your cleaned CSV has been downloaded.');
+      setMessage(`Successfully processed ${fileCount} file${fileCount > 1 ? 's' : ''}! Your cleaned CSV has been downloaded.`);
       setMessageType('success');
-      setSelectedFile(null);
+      setSelectedFiles([]);
     } catch (error) {
-      let errorMessage = 'An error occurred while processing the file.';
+      let errorMessage = 'An error occurred while processing the files.';
       
       if (error.response && error.response.data) {
         // Try to parse error message from blob
@@ -154,7 +176,7 @@ function App() {
                 <line x1="12" y1="3" x2="12" y2="15" />
               </svg>
               <p className="drop-zone-text">
-                Drag and drop your file here
+                Drag and drop your files here
               </p>
               <p className="drop-zone-subtext">or</p>
               <label className="file-input-label">
@@ -164,17 +186,34 @@ function App() {
                   onChange={handleFileChange}
                   className="file-input"
                   disabled={isProcessing}
+                  multiple
                 />
-                <span className="file-input-button">Choose File</span>
+                <span className="file-input-button">Choose Files</span>
               </label>
-              <p className="file-types">Supports: CSV, XLSX, XLS</p>
+              <p className="file-types">Supports: CSV, XLSX, XLS (multiple files allowed)</p>
             </div>
           </div>
 
-          {selectedFile && (
-            <div className="selected-file">
-              <p className="selected-file-label">Selected file:</p>
-              <p className="selected-file-name">{selectedFile.name}</p>
+          {selectedFiles.length > 0 && (
+            <div className="selected-files">
+              <p className="selected-files-label">
+                Selected files ({selectedFiles.length}):
+              </p>
+              <ul className="files-list">
+                {selectedFiles.map((file, index) => (
+                  <li key={index} className="file-item">
+                    <span className="file-item-name">{file.name}</span>
+                    <button
+                      className="remove-file-button"
+                      onClick={() => removeFile(index)}
+                      disabled={isProcessing}
+                      aria-label={`Remove ${file.name}`}
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
         </div>
@@ -194,9 +233,9 @@ function App() {
         <button
           className="process-button"
           onClick={handleProcess}
-          disabled={!selectedFile || isProcessing}
+          disabled={selectedFiles.length === 0 || isProcessing}
         >
-          {isProcessing ? 'Processing...' : 'Process File'}
+          {isProcessing ? 'Processing...' : `Process ${selectedFiles.length > 0 ? selectedFiles.length : ''} File${selectedFiles.length !== 1 ? 's' : ''}`}
         </button>
 
         {message && (

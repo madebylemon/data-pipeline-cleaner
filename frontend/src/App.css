@@ -130,7 +130,7 @@ body {
   margin-top: 10px;
 }
 
-.selected-file {
+.selected-files {
   margin-top: 20px;
   padding: 15px 20px;
   background-color: #f5f5f5;
@@ -138,17 +138,74 @@ body {
   border: 1px solid #e0e0e0;
 }
 
-.selected-file-label {
+.selected-files-label {
   font-size: 0.9rem;
   color: #666666;
-  margin-bottom: 5px;
+  margin-bottom: 10px;
+  font-weight: 600;
 }
 
-.selected-file-name {
-  font-size: 1.1rem;
-  font-weight: 500;
+.files-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background-color: #ffffff;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  transition: all 0.2s ease;
+}
+
+.file-item:last-child {
+  margin-bottom: 0;
+}
+
+.file-item:hover {
+  border-color: #000000;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.file-item-name {
+  font-size: 0.95rem;
   color: #000000;
   word-break: break-all;
+  flex: 1;
+  margin-right: 10px;
+}
+
+.remove-file-button {
+  background-color: #000000;
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 1.2rem;
+  line-height: 1;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.remove-file-button:hover:not(:disabled) {
+  background-color: #cc0000;
+  transform: scale(1.1);
+}
+
+.remove-file-button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .course-name-section {
