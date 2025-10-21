@@ -139,40 +139,38 @@ def process_single_file(file_path, original_filename):
         if 'Q13 and 14' in df.columns:
             df = df.drop(columns=['Q13 and 14'])
         
-        # Transformation 2: Move column "Q35" to first position
-        if 'Q35' in df.columns:
-            cols = df.columns.tolist()
-            cols.remove('Q35')
-            cols.insert(0, 'Q35')
-            df = df[cols]
-        
-        # Transformation 3: Rename "Q34" to "Attention Check"
+        # Transformation 2: Rename "Q34" to "Attention Check"
         if 'Q34' in df.columns:
             df = df.rename(columns={'Q34': 'Attention Check'})
         
-        # Transformation 4: Rename Q1-Q25 with " - Exam" suffix
-        rename_dict = {}
-        for i in range(1, 26):
-            col_name = f'Q{i}'
-            if col_name in df.columns:
-                rename_dict[col_name] = f'{col_name} - Exam'
-        df = df.rename(columns=rename_dict)
+        # Transformation 3: Find and rename Q35 (any variation) to ID, then move to first position
+        # Check for Q35 with any variation
+        q35_col = None
+        for col in df.columns:
+            if col == 'Q35' or col.startswith('Q35'):
+                q35_col = col
+                break
         
-        # Transformation 5: Rename Q26-Q32 with " - Survey" suffix
-        rename_dict = {}
-        for i in range(26, 33):
-            col_name = f'Q{i}'
-            if col_name in df.columns:
-                rename_dict[col_name] = f'{col_name} - Survey'
-        df = df.rename(columns=rename_dict)
+        if q35_col:
+            # Rename to ID
+            df = df.rename(columns={q35_col: 'ID'})
+            # Move ID to first position
+            cols = df.columns.tolist()
+            cols.remove('ID')
+            cols.insert(0, 'ID')
+            df = df[cols]
         
-        # Transformation 6: Rename Q33-Q44 with " - Survey" suffix
-        rename_dict = {}
-        for i in range(33, 45):
-            col_name = f'Q{i}'
-            if col_name in df.columns:
-                rename_dict[col_name] = f'{col_name} - Survey'
-        df = df.rename(columns=rename_dict)
+        # Transformation 5: Remove all survey-related columns (Q26-Q44)
+        cols_to_remove = []
+        for col in df.columns:
+            # Remove any column that is Q26 through Q44 (with or without suffixes)
+            for i in range(26, 45):
+                if col == f'Q{i}' or col.startswith(f'Q{i} ') or col.startswith(f'Q{i}-'):
+                    cols_to_remove.append(col)
+                    break
+        
+        if cols_to_remove:
+            df = df.drop(columns=cols_to_remove, errors='ignore')
         
         # Transformation 7: Add metadata columns from filename
         # Add Course Name column
