@@ -131,11 +131,20 @@ def process_single_file(file_path, original_filename):
         else:
             df = pd.read_excel(file_path)
         
-        # Transformation 1: Remove column "AE"
+        # Transformation 1: Remove metadata columns B through R (StartDate through UserLanguage)
+        if 'StartDate' in df.columns and 'UserLanguage' in df.columns:
+            start_idx = df.columns.get_loc('StartDate')
+            end_idx = df.columns.get_loc('UserLanguage')
+            # Get all columns between and including StartDate and UserLanguage
+            if end_idx >= start_idx:
+                cols_to_remove = df.columns[start_idx:end_idx + 1].tolist()
+                df = df.drop(columns=cols_to_remove, errors='ignore')
+        
+        # Transformation 1b: Remove column "AE"
         if 'AE' in df.columns:
             df = df.drop(columns=['AE'])
         
-        # Transformation 1b: Remove column "Q13 and 14" if it exists
+        # Transformation 1c: Remove column "Q13 and 14" if it exists
         if 'Q13 and 14' in df.columns:
             df = df.drop(columns=['Q13 and 14'])
         
@@ -160,21 +169,21 @@ def process_single_file(file_path, original_filename):
             cols.insert(0, 'ID')
             df = df[cols]
         
-        # Transformation 4: Remove all survey-related columns (Q26-Q44)
-        # More aggressive removal - remove ANY column that contains Q26 through Q44
+        # Transformation 4: Remove ALL survey-related columns (Q26-Q44 with ANY suffix)
+        # This catches Q26, Q26_TEXT, Q33_4_TEXT, Q43_8_TEXT, etc.
+        import re
         cols_to_remove = []
         for col in df.columns:
-            col_upper = str(col).upper()
-            # Check if column contains Q26 through Q44 in any format
+            col_str = str(col).upper()
+            # Check if column contains Q26 through Q44 in ANY position
             for i in range(26, 45):
-                # Match Q{i} at word boundary (start of string or after non-alphanumeric)
-                if f'Q{i}' in col_upper:
-                    # Extra check: ensure it's actually Q{i} and not part of a larger number
-                    # (e.g., Q260 should not match Q26)
-                    import re
-                    if re.search(rf'\bQ{i}\b', col_upper):
-                        cols_to_remove.append(col)
-                        break
+                # Match Q{i} followed by any character or end of string
+                # This catches: Q26, Q26_TEXT, Q26_1_TEXT, Q26-anything, etc.
+                # But NOT Q260 (3-digit number)
+                pattern = rf'Q{i}(?:_|\s|-|$|[^\d])'
+                if re.search(pattern, col_str):
+                    cols_to_remove.append(col)
+                    break
         
         if cols_to_remove:
             df = df.drop(columns=cols_to_remove, errors='ignore')
