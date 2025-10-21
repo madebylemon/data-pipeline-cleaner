@@ -24,6 +24,51 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def extract_metadata_from_filename(filename):
+    """
+    Extract metadata from filename dynamically.
+    Example: "EMCS+Group+-+1501+-+Section+3+-+sp2024+-+Post_June+13,+2025_06.14.csv"
+    Returns: {'course_name': '1501', 'semester': 'sp2024', 'pre_post': 'Post'}
+    """
+    import re
+    
+    # Remove file extension
+    name_without_ext = filename.rsplit('.', 1)[0] if '.' in filename else filename
+    
+    # Replace common separators with spaces for easier parsing
+    normalized = name_without_ext.replace('+', ' ').replace('-', ' ').replace('_', ' ')
+    
+    metadata = {
+        'course_name': None,
+        'semester': None,
+        'pre_post': None
+    }
+    
+    # Extract Course Name (look for 4-digit number, or alphanumeric course code)
+    course_match = re.search(r'\b(\d{4})\b', normalized)
+    if course_match:
+        metadata['course_name'] = course_match.group(1)
+    
+    # Extract Semester (pattern like sp2024, fa2024, fall2024, spring2025, etc.)
+    semester_match = re.search(r'\b(sp|fa|su|spring|fall|summer)\s*(\d{4})\b', normalized, re.IGNORECASE)
+    if semester_match:
+        term = semester_match.group(1).lower()
+        year = semester_match.group(2)
+        # Normalize to short format
+        if term.startswith('sp'):
+            metadata['semester'] = f"sp{year}"
+        elif term.startswith('fa'):
+            metadata['semester'] = f"fa{year}"
+        elif term.startswith('su'):
+            metadata['semester'] = f"su{year}"
+    
+    # Extract Pre/Post (look for the word "Pre" or "Post" before a date or underscore)
+    pre_post_match = re.search(r'\b(Pre|Post)\b', normalized, re.IGNORECASE)
+    if pre_post_match:
+        metadata['pre_post'] = pre_post_match.group(1).capitalize()
+    
+    return metadata
+
 def get_semester(date_str):
     """Convert date string to semester format."""
     try:
@@ -74,9 +119,12 @@ def get_pre_post(date_str, semester):
         print(f"Error determining Pre/Post for {date_str}: {e}")
         return None
 
-def process_single_file(file_path):
+def process_single_file(file_path, original_filename):
     """Process a single file with all transformations and return the dataframe."""
     try:
+        # Extract metadata from filename
+        metadata = extract_metadata_from_filename(original_filename)
+        
         # Read file
         if file_path.endswith('.csv'):
             df = pd.read_csv(file_path)
@@ -126,14 +174,23 @@ def process_single_file(file_path):
                 rename_dict[col_name] = f'{col_name} - Survey'
         df = df.rename(columns=rename_dict)
         
-        # Transformation 7: Create "Semester" column based on "StartDate"
-        if 'StartDate' in df.columns:
-            df['Semester'] = df['StartDate'].apply(get_semester)
-        else:
-            raise ValueError("Required column 'StartDate' not found in file")
+        # Transformation 7: Add metadata columns from filename
+        # Add Course Name column
+        if metadata['course_name']:
+            df['Course Name'] = metadata['course_name']
         
-        # Transformation 8: Create "Pre/Post" column as last column
-        if 'StartDate' in df.columns and 'Semester' in df.columns:
+        # Add Semester column from filename (overrides date-based semester if present)
+        if metadata['semester']:
+            df['Semester'] = metadata['semester']
+        elif 'StartDate' in df.columns:
+            # Fallback to date-based semester if filename doesn't have it
+            df['Semester'] = df['StartDate'].apply(get_semester)
+        
+        # Add Pre/Post column from filename (overrides date-based pre/post if present)
+        if metadata['pre_post']:
+            df['Pre/Post'] = metadata['pre_post']
+        elif 'StartDate' in df.columns and 'Semester' in df.columns:
+            # Fallback to date-based pre/post if filename doesn't have it
             df['Pre/Post'] = df.apply(lambda row: get_pre_post(row['StartDate'], row['Semester']), axis=1)
         
         return df
@@ -141,14 +198,17 @@ def process_single_file(file_path):
     except Exception as e:
         raise Exception(f"Error processing file: {str(e)}")
 
-def process_files(file_paths, course_name=None):
-    """Process multiple files, combine them, and return the output path."""
+def process_files(file_info_list):
+    """
+    Process multiple files, combine them, and return the output path.
+    file_info_list: List of tuples (file_path, original_filename)
+    """
     try:
         processed_dfs = []
         
-        # Process each file
-        for file_path in file_paths:
-            df = process_single_file(file_path)
+        # Process each file with its original filename
+        for file_path, original_filename in file_info_list:
+            df = process_single_file(file_path, original_filename)
             processed_dfs.append(df)
         
         # Combine all dataframes
@@ -158,15 +218,8 @@ def process_files(file_paths, course_name=None):
             # Concatenate all dataframes, keeping all columns
             combined_df = pd.concat(processed_dfs, ignore_index=True, sort=False)
         
-        # Transformation 9: Add "Course Name" column if course name provided
-        if course_name:
-            combined_df['Course Name'] = course_name
-        
-        # Save to CSV
-        if course_name:
-            output_filename = f"{course_name}.csv"
-        else:
-            output_filename = "cleaned_master_data.csv"
+        # Generate output filename - always use default name
+        output_filename = "cleaned_master_data.csv"
         
         output_path = os.path.join(UPLOAD_FOLDER, output_filename)
         combined_df.to_csv(output_path, index=False, encoding='utf-8')
@@ -202,23 +255,21 @@ def upload_file():
             if not allowed_file(file.filename):
                 return jsonify({'error': f'Invalid file format: {file.filename}. Please upload CSV or Excel files only.'}), 400
         
-        # Get course name from form data
-        course_name = request.form.get('course_name', '').strip()
-        
-        # Save all uploaded files
-        saved_filepaths = []
+        # Save all uploaded files and track original filenames
+        file_info_list = []
         try:
             for file in files_to_process:
+                original_filename = file.filename  # Keep original filename before securing
                 filename = secure_filename(file.filename)
                 filepath = os.path.join(UPLOAD_FOLDER, filename)
                 file.save(filepath)
-                saved_filepaths.append(filepath)
+                file_info_list.append((filepath, original_filename))
             
-            # Process all files and combine them
-            output_path, output_filename = process_files(saved_filepaths, course_name if course_name else None)
+            # Process all files and combine them (passing original filenames)
+            output_path, output_filename = process_files(file_info_list)
             
             # Clean up uploaded files
-            for filepath in saved_filepaths:
+            for filepath, _ in file_info_list:
                 if os.path.exists(filepath):
                     os.remove(filepath)
             
@@ -231,7 +282,7 @@ def upload_file():
             )
         except Exception as e:
             # Clean up uploaded files in case of error
-            for filepath in saved_filepaths:
+            for filepath, _ in file_info_list:
                 if os.path.exists(filepath):
                     os.remove(filepath)
             raise e
